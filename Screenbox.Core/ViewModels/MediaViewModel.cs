@@ -229,8 +229,10 @@ public partial class MediaViewModel : ObservableRecipient
         AltCaption = file.Name;
     }
 
-    public async Task LoadDetailsAsync(IFilesService filesService)
+    public async Task LoadDetailsAsync(IFilesService filesService, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+        
         switch (Source)
         {
             case StorageFile file:
@@ -242,6 +244,8 @@ public partial class MediaViewModel : ObservableRecipient
                 break;
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
+        
         switch (MediaType)
         {
             case MediaPlaybackType.Unknown when Item is { IsValueCreated: true, Value: { VideoTracks.Count: 0, Media.ParsedStatus: MediaParsedStatus.Done } }:
@@ -274,7 +278,7 @@ public partial class MediaViewModel : ObservableRecipient
         }
     }
 
-    public async Task LoadThumbnailAsync()
+    public async Task LoadThumbnailAsync(CancellationToken cancellationToken = default)
     {
         if (Thumbnail != null) return;
         if (Source is Uri uri && await TryGetStorageFileFromUri(uri) is { } storageFile)
@@ -286,23 +290,27 @@ public partial class MediaViewModel : ObservableRecipient
         {
             using var source = await GetThumbnailSourceAsync(file);
             if (source == null) return;
-            BitmapImage image = new()
+            
+            // 在后台线程处理图像解码以避免阻塞UI
+            await Task.Run(async () =>
             {
-                DecodePixelType = DecodePixelType.Logical,
-                DecodePixelHeight = 300
-            };
+                BitmapImage image = new()
+                {
+                    DecodePixelType = DecodePixelType.Logical,
+                    DecodePixelHeight = 300
+                };
 
-            try
-            {
-                await image.SetSourceAsync(source);
-            }
-            catch (Exception)
-            {
-                // WinRT component not found exception???
-                return;
-            }
-
-            Thumbnail = image;
+                try
+                {
+                    await image.SetSourceAsync(source);
+                    Thumbnail = image;
+                }
+                catch (Exception)
+                {
+                    // WinRT component not found exception???
+                    return;
+                }
+            }, cancellationToken);
         }
         else if (Item is { IsValueCreated: true, Value.Media: { } media } &&
                  media.Meta(MetadataType.ArtworkURL) is { } artworkUrl &&

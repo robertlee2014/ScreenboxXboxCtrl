@@ -344,7 +344,7 @@ namespace Screenbox.Core.Services
                     }
                     else
                     {
-                        await song.LoadDetailsAsync(_filesService);
+                        await song.LoadDetailsAsync(_filesService, cancellationToken);
                         cancellationToken.ThrowIfCancellationRequested();
                         song.UpdateAlbum(_albumFactory);
                         song.UpdateArtists(_artistFactory);
@@ -438,7 +438,7 @@ namespace Screenbox.Core.Services
                     video.IsFromLibrary = true;
                     if (!hasCache)
                     {
-                        await video.LoadDetailsAsync(_filesService);
+                        await video.LoadDetailsAsync(_filesService, cancellationToken);
                         cancellationToken.ThrowIfCancellationRequested();
                     }
                 }
@@ -467,13 +467,39 @@ namespace Screenbox.Core.Services
 
         private async Task BatchFetchMediaAsync(StorageFileQueryResult queryResult, List<MediaViewModel> target, CancellationToken cancellationToken)
         {
+            const int batchSize = 50;
             cancellationToken.ThrowIfCancellationRequested();
-            while (true)
+            
+            uint currentIndex = (uint)target.Count;
+            while (!cancellationToken.IsCancellationRequested)
             {
-                List<MediaViewModel> batch = await FetchMediaFromStorage(queryResult, (uint)target.Count);
+                List<MediaViewModel> batch = await FetchMediaFromStorage(queryResult, currentIndex, batchSize);
                 if (batch.Count == 0) break;
-                target.AddRange(batch);
-                cancellationToken.ThrowIfCancellationRequested();
+
+                // 并发处理媒体详细信息加载，限制最大并发任务数
+                const int maxConcurrentTasks = 4;
+                using var semaphore = new SemaphoreSlim(maxConcurrentTasks);
+                var tasks = batch.Select(async media =>
+                {
+                    await semaphore.WaitAsync(cancellationToken);
+                    try
+                    {
+                        await media.LoadDetailsAsync(_filesService, cancellationToken);
+                        cancellationToken.ThrowIfCancellationRequested();
+                        return media;
+                    }
+                    finally
+                    {
+                        semaphore.Release();
+                    }
+                });
+
+                var processedBatch = await Task.WhenAll(tasks);
+                target.AddRange(processedBatch);
+                currentIndex += (uint)batch.Count;
+                
+                // 添加小延迟避免过度占用资源
+                await Task.Delay(10, cancellationToken);
             }
         }
 
