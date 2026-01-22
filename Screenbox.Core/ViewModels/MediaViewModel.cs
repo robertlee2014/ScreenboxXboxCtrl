@@ -294,10 +294,13 @@ public partial class MediaViewModel : ObservableRecipient
             // 在后台线程处理图像解码以避免阻塞UI
             await Task.Run(async () =>
             {
+                // 根据平台调整图像质量 - Xbox有更强的GPU性能
+                int decodePixelHeight = DeviceInfoHelper.IsXbox ? 400 : 300;
+                
                 BitmapImage image = new()
                 {
                     DecodePixelType = DecodePixelType.Logical,
-                    DecodePixelHeight = 300
+                    DecodePixelHeight = decodePixelHeight
                 };
 
                 try
@@ -316,10 +319,13 @@ public partial class MediaViewModel : ObservableRecipient
                  media.Meta(MetadataType.ArtworkURL) is { } artworkUrl &&
                  Uri.TryCreate(artworkUrl, UriKind.Absolute, out Uri artworkUri))
         {
+            // 根据平台调整图像质量 - Xbox有更强的GPU性能
+            int decodePixelHeight = DeviceInfoHelper.IsXbox ? 400 : 300;
+            
             Thumbnail = new BitmapImage(artworkUri)
             {
                 DecodePixelType = DecodePixelType.Logical,
-                DecodePixelHeight = 300
+                DecodePixelHeight = decodePixelHeight
             };
         }
     }

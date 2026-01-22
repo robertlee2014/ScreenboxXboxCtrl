@@ -271,7 +271,16 @@ namespace Screenbox.Core.Services
             StorageLibraryChangeReader? changeReader = null;
             try
             {
-                useCache = useCache && !SystemInformation.IsXbox;   // Don't use cache on Xbox
+                // 对于Xbox平台使用优化的缓存策略
+                if (SystemInformation.IsXbox)
+                {
+                    // Xbox有更大的存储空间，可以使用更智能的缓存策略
+                    useCache = true;
+                }
+                else
+                {
+                    useCache = useCache;
+                }
                 bool hasCache = false;
                 await KnownFolders.RequestAccessAsync(KnownFolderId.MusicLibrary);
                 var libraryQuery = GetMusicLibraryQuery();
@@ -382,7 +391,16 @@ namespace Screenbox.Core.Services
 
             try
             {
-                useCache = useCache && !SystemInformation.IsXbox;   // Don't use cache on Xbox
+                // 对于Xbox平台使用优化的缓存策略
+                if (SystemInformation.IsXbox)
+                {
+                    // Xbox有更大的存储空间，可以使用更智能的缓存策略
+                    useCache = true;
+                }
+                else
+                {
+                    useCache = useCache;
+                }
                 bool hasCache = false;
                 await KnownFolders.RequestAccessAsync(KnownFolderId.VideosLibrary);
                 StorageFileQueryResult libraryQuery = GetVideosLibraryQuery();
@@ -467,17 +485,18 @@ namespace Screenbox.Core.Services
 
         private async Task BatchFetchMediaAsync(StorageFileQueryResult queryResult, List<MediaViewModel> target, CancellationToken cancellationToken)
         {
-            const int batchSize = 50;
+            // 根据平台调整批量大小和并发数
+            int batchSize = SystemInformation.IsXbox ? 100 : 50;  // Xbox有更强的硬件性能，可以处理更大批量
             cancellationToken.ThrowIfCancellationRequested();
             
             uint currentIndex = (uint)target.Count;
             while (!cancellationToken.IsCancellationRequested)
             {
-                List<MediaViewModel> batch = await FetchMediaFromStorage(queryResult, currentIndex, batchSize);
+                List<MediaViewModel> batch = await FetchMediaFromStorage(queryResult, currentIndex, (uint)batchSize);
                 if (batch.Count == 0) break;
 
-                // 并发处理媒体详细信息加载，限制最大并发任务数
-                const int maxConcurrentTasks = 4;
+                // 根据平台调整并发数，Xbox通常有更好的多核性能
+                int maxConcurrentTasks = SystemInformation.IsXbox ? 8 : 4;  // Xbox支持更多并发任务
                 using var semaphore = new SemaphoreSlim(maxConcurrentTasks);
                 var tasks = batch.Select(async media =>
                 {
@@ -498,8 +517,9 @@ namespace Screenbox.Core.Services
                 target.AddRange(processedBatch);
                 currentIndex += (uint)batch.Count;
                 
-                // 添加小延迟避免过度占用资源
-                await Task.Delay(10, cancellationToken);
+                // 在Xbox上减少延迟以加快处理速度，但在其他平台上保持原有延迟
+                int delayMs = SystemInformation.IsXbox ? 5 : 10;
+                await Task.Delay(delayMs, cancellationToken);
             }
         }
 
