@@ -95,6 +95,12 @@ public sealed class PlayerService : IPlayerService
             return CreateMedia(player, new Uri(storageFile.Path, UriKind.Absolute), options);
         }
 
+        // Handle ISO files specifically by using their full path
+        if (file.FileType.Equals(".iso", StringComparison.OrdinalIgnoreCase))
+        {
+            return new Media(player.LibVlc, file.Path, FromType.FromPath, options);
+        }
+
         string token = _useFal
             ? StorageApplicationPermissions.FutureAccessList.Add(file, "media")
             : SharedStorageAccessManager.AddFile(file);
